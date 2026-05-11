@@ -1,0 +1,110 @@
+{
+  "entities": {
+    "EmotionRecord": {
+      "title": "Emotion Record",
+      "description": "A single entry detailing how the user felt (questionnaire, diary, or chat).",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "User ID of the owner"
+        },
+        "recordType": {
+          "type": "string",
+          "enum": ["questionnaire", "diary", "chat"]
+        },
+        "content": {
+          "type": "string",
+          "description": "The raw input text or summary of chat"
+        },
+        "emotions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "List of emotions identified."
+        },
+        "timestamp": {
+          "type": "number",
+          "description": "Server timestamp of creation"
+        },
+        "isFlagged": {
+          "type": "boolean",
+          "description": "True if severe negative emotion was detected."
+        }
+      },
+      "required": ["userId", "recordType", "emotions", "timestamp"]
+    },
+    "DailySummary": {
+      "title": "Daily Summary",
+      "description": "AI-generated summary of the user's day.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "dateId": {
+          "type": "string",
+          "description": "YYYY-MM-DD format"
+        },
+        "coreEmotion": {
+          "type": "string"
+        },
+        "keyEvents": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "doctorMessage": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "number"
+        }
+      },
+      "required": ["userId", "dateId", "coreEmotion", "doctorMessage", "timestamp"]
+    },
+    "PeriodicReport": {
+      "title": "Periodic Report",
+      "description": "Weekly or monthly insight report.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "periodType": {
+          "type": "string",
+          "enum": ["weekly", "monthly", "yearly"]
+        },
+        "startDate": {
+          "type": "string"
+        },
+        "endDate": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "suggestions": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "timestamp": {
+          "type": "number"
+        }
+      },
+      "required": ["userId", "periodType", "startDate", "endDate", "summary", "timestamp"]
+    }
+  },
+  "firestore": {
+    "users/{userId}/records/{recordId}": {
+      "schema": { "$ref": "#/entities/EmotionRecord" },
+      "description": "Individual emotion records for a user."
+    },
+    "users/{userId}/dailySummaries/{dailySummaryId}": {
+      "schema": { "$ref": "#/entities/DailySummary" },
+      "description": "Daily summaries for a user."
+    },
+    "users/{userId}/periodicReports/{reportId}": {
+      "schema": { "$ref": "#/entities/PeriodicReport" },
+      "description": "Periodic insight reports for a user."
+    }
+  }
+}
