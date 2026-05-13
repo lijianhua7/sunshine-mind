@@ -4,6 +4,11 @@
 
 ---
 
+## 体验地址
+https://sunshine-mind.vercel.app/
+
+---
+
 ## 🌟 核心功能
 
 ### 1. 智能情绪问卷 (`Smart Questionnaire`)
