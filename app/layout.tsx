@@ -1,29 +1,37 @@
-import type {Metadata} from 'next';
+import type { Metadata } from 'next';
+import { Noto_Sans_SC, Noto_Serif_SC } from 'next/font/google';
 import './globals.css';
-import { Geist } from "next/font/google";
-import { cn } from "@/lib/utils";
+import { Toaster } from 'sonner';
 import { AuthProvider } from '@/components/AuthProvider';
-import { Toaster } from '@/components/ui/sonner';
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const notoSans = Noto_Sans_SC({ 
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-sans',
+});
+
+const notoSerif = Noto_Serif_SC({ 
+  subsets: ['latin'],
+  weight: ['400', '500', '700'],
+  variable: '--font-serif',
+});
 
 export const metadata: Metadata = {
   title: 'Sunshine Mind',
-  description: 'An AI-powered emotion tracking and healing platform',
+  description: 'AI-driven emotion management and healing platform',
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)}>
-      <body className="antialiased min-h-screen sunlight-bg text-[#2D3436] overflow-x-hidden relative" suppressHydrationWarning>
-        <div className="dappled-shadows pointer-events-none fixed inset-0 -z-10" />
+    <html lang="zh-CN">
+      <body className={`${notoSans.variable} ${notoSerif.variable} font-sans bg-background text-foreground antialiased`}>
         <AuthProvider>
           {children}
-          <Toaster position="top-center" toastOptions={{
-             classNames: {
-               toast: 'glass-panel text-[#2D3436]',
-             }
-          }} />
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

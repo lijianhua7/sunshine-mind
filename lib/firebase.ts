@@ -1,27 +1,61 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+import { getFirestore } from 'firebase/firestore';
+import firebaseConfig from '@/firebase-applet-config.json';
 
-const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
+const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
+if (typeof window !== 'undefined') {
+  console.log('[Firebase Init] App ID:', firebaseConfig.appId);
+  console.log('[Firebase Init] Using database instance:', dbId);
+}
+export const db = getFirestore(app, dbId);
 export const googleProvider = new GoogleAuthProvider();
 
-// IMPORTANT: use firestoreDatabaseId from the config
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
 
-export async function testFirebaseConnection() {
-  try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("Firebase connected successfully");
-  } catch (error: any) {
-    if (error?.message?.includes('Missing or insufficient permissions')) {
-      // Reaching the permission check means we successfully connected to the Firestore backend.
-      console.log("Firebase connected successfully (verified via rules)");
-    } else if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration - client is offline.");
-    } else {
-      console.error("Firebase connection error:", error);
-    }
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
   }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
 }

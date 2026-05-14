@@ -1,6 +1,9 @@
 {
   "name": "Sunshine Mind",
-  "description": "An AI-powered emotion tracking and healing platform with daily summaries and psychological insights.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
+  "description": "AI-driven emotion management and healing platform",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
 }

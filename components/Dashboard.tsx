@@ -1,100 +1,119 @@
 'use client';
 
-import { useAuth } from './AuthProvider';
-import { Button } from './ui/button';
-import { LogOut, Sun, Calendar, LayoutDashboard } from 'lucide-react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { QuestionnaireView } from './QuestionnaireView';
-import { DiaryView } from './DiaryView';
-import { ChatView } from './ChatView';
-import { DailySummaryView } from './DailySummaryView';
-import { PeriodicReportView } from './PeriodicReportView';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  BarChart3, 
+  BookOpen, 
+  MessageSquare, 
+  LayoutDashboard, 
+  LogOut, 
+  Sun,
+  ClipboardList
+} from 'lucide-react';
+import { useAuth } from '@/components/AuthProvider';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import QuestionnaireView from './QuestionnaireView';
+import DiaryView from './DiaryView';
+import ChatView from './ChatView';
+import DailySummaryView from './DailySummaryView';
+import PeriodicReportView from './PeriodicReportView';
 
-export function Dashboard() {
-  const { user, logout } = useAuth();
-  const [activeView, setActiveView] = useState<'input' | 'periodic'>('input');
+type Tab = 'dashboard' | 'questionnaire' | 'diary' | 'chat' | 'reports';
+
+export default function Dashboard() {
+  const { user, logOut } = useAuth();
+  const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => setScrolled(window.scrollY > 20);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const navItems = [
+    { id: 'dashboard', label: '心情主页', icon: LayoutDashboard },
+    { id: 'questionnaire', label: '静心问卷', icon: ClipboardList },
+    { id: 'diary', label: '灵魂日记', icon: BookOpen },
+    { id: 'chat', label: '心声回响', icon: MessageSquare },
+    { id: 'reports', label: '心灵洞察', icon: BarChart3 },
+  ];
 
   return (
-    <div className="min-h-screen relative">
-      <header className="sticky top-0 z-50 glass-panel !rounded-none !border-t-0 !border-x-0 !border-b !border-[var(--color-glass-border)]">
-        <div className="mx-auto flex max-w-5xl items-center justify-between p-4 px-6">
-          <div className="flex items-center gap-2 text-deep-sage">
-            <span className="font-medium text-2xl tracking-tight flex items-center gap-2"><Sun className="h-6 w-6" /> Soul Echo</span>
+    <div className="min-h-screen bg-background font-sans text-foreground selection:bg-primary/20">
+      {/* Floating Navigation */}
+      <header className="fixed top-0 inset-x-0 z-50 flex justify-center p-4 py-6 pointer-events-none">
+        <motion.nav 
+          initial={{ y: -50, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className={`flex items-center gap-2 p-2 rounded-full border border-border/50 backdrop-blur-md bg-card/80 shadow-sm transition-all duration-300 pointer-events-auto ${scrolled ? 'shadow-md opacity-95' : ''}`}
+        >
+          <div className="pl-4 pr-6 flex items-center gap-2 border-r border-border/50">
+            <Sun className="text-primary w-5 h-5 flex-shrink-0" />
+            <span className="font-serif font-medium hidden md:block">晴空心语</span>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="flex bg-white/30 backdrop-blur-md rounded-full p-1 border border-white/40 shadow-sm transition-all hover:bg-white/40">
-               <Button 
-                 variant="ghost" 
-                 size="sm" 
-                 className={`rounded-full px-4 text-xs ${activeView === 'input' ? 'glass-panel !rounded-full shadow-sm' : 'hover:bg-black/5'}`}
-                 onClick={() => setActiveView('input')}
-               >
-                 <LayoutDashboard className="w-4 h-4 mr-1.5" />
-                 今日记录
-               </Button>
-               <Button 
-                 variant="ghost" 
-                 size="sm" 
-                 className={`rounded-full px-4 text-xs ${activeView === 'periodic' ? 'glass-panel !rounded-full shadow-sm' : 'hover:bg-black/5'}`}
-                 onClick={() => setActiveView('periodic')}
-               >
-                 <Calendar className="w-4 h-4 mr-1.5" />
-                 定期洞察
-               </Button>
-            </div>
-            
-            <div className="flex items-center gap-2 pl-4 border-l border-[var(--color-glass-border)]">
-              <span className="text-sm text-[#636E72] hidden sm:inline-block font-medium">
-                {user?.displayName || '朋友'}
-              </span>
-              <Button variant="ghost" size="icon" onClick={logout} className="rounded-full text-[#636E72] hover:bg-white/40">
-                <LogOut className="h-4 w-4" />
+
+          <div className="flex gap-1 px-2">
+            {navItems.map((item) => {
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id as Tab)}
+                  className={`relative flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                    isActive ? 'text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  }`}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="nav-indicator"
+                      className="absolute inset-0 bg-primary rounded-full -z-10"
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                  <item.icon size={16} />
+                  <span className="hidden sm:inline-block">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pl-2 border-l border-border/50 flex items-center gap-2">
+            <div className="flex items-center gap-2">
+              <Avatar className="w-8 h-8 pointer-events-none ring-2 ring-background">
+                <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
+                  {user?.displayName?.charAt(0) || user?.email?.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <Button onClick={logOut} variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                <LogOut size={16} />
               </Button>
             </div>
           </div>
-        </div>
+        </motion.nav>
       </header>
 
-      <main className="mx-auto max-w-5xl p-6 relative z-10">
-        {activeView === 'input' ? (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <h2 className="text-3xl font-light text-[#2D3436] mb-4">此刻，你的心情如何？</h2>
-              
-              <Tabs defaultValue="questionnaire" className="w-full">
-                <TabsList className="flex w-full items-stretch bg-white/40 backdrop-blur-md rounded-[20px] p-1.5 mb-6 border border-white/50 shadow-sm min-h-[52px]">
-                  <TabsTrigger value="questionnaire" className="flex-1 rounded-2xl py-2.5 data-[state=active]:bg-white/90 data-[state=active]:text-[#4A5D4E] data-[state=active]:shadow-sm text-[#636E72] font-medium transition-all">
-                    问卷引导
-                  </TabsTrigger>
-                  <TabsTrigger value="diary" className="flex-1 rounded-2xl py-2.5 data-[state=active]:bg-white/90 data-[state=active]:text-[#4A5D4E] data-[state=active]:shadow-sm text-[#636E72] font-medium transition-all">
-                    心情日记
-                  </TabsTrigger>
-                  <TabsTrigger value="chat" className="flex-1 rounded-2xl py-2.5 data-[state=active]:bg-white/90 data-[state=active]:text-[#4A5D4E] data-[state=active]:shadow-sm text-[#636E72] font-medium transition-all">
-                    即时倾诉
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="questionnaire" className="mt-0 outline-none">
-                  <QuestionnaireView />
-                </TabsContent>
-                <TabsContent value="diary" className="mt-0 outline-none">
-                  <DiaryView />
-                </TabsContent>
-                <TabsContent value="chat" className="mt-0 outline-none">
-                  <ChatView />
-                </TabsContent>
-              </Tabs>
-            </div>
-            
-            <div className="lg:col-span-1">
-              <DailySummaryView />
-            </div>
-          </div>
-        ) : (
-          <PeriodicReportView />
-        )}
+      {/* Main Content Area */}
+      <main className="pt-32 pb-16 px-4 md:px-8 max-w-6xl mx-auto min-h-screen flex flex-col">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -15 }}
+            transition={{ duration: 0.3, ease: 'easeOut' }}
+            className="flex-1 flex flex-col"
+          >
+            {activeTab === 'dashboard' && <DailySummaryView onNavigate={setActiveTab} />}
+            {activeTab === 'questionnaire' && <QuestionnaireView />}
+            {activeTab === 'diary' && <DiaryView />}
+            {activeTab === 'chat' && <ChatView />}
+            {activeTab === 'reports' && <PeriodicReportView />}
+          </motion.div>
+        </AnimatePresence>
       </main>
     </div>
   );

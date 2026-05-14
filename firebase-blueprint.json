@@ -1,110 +1,58 @@
 {
   "entities": {
-    "EmotionRecord": {
-      "title": "Emotion Record",
-      "description": "A single entry detailing how the user felt (questionnaire, diary, or chat).",
+    "User": {
+      "title": "User Profile",
+      "description": "User account information",
       "type": "object",
       "properties": {
-        "userId": {
-          "type": "string",
-          "description": "User ID of the owner"
-        },
-        "recordType": {
-          "type": "string",
-          "enum": ["questionnaire", "diary", "chat"]
-        },
-        "content": {
-          "type": "string",
-          "description": "The raw input text or summary of chat"
-        },
-        "emotions": {
-          "type": "array",
-          "items": { "type": "string" },
-          "description": "List of emotions identified."
-        },
-        "timestamp": {
-          "type": "number",
-          "description": "Server timestamp of creation"
-        },
-        "isFlagged": {
-          "type": "boolean",
-          "description": "True if severe negative emotion was detected."
-        }
-      },
-      "required": ["userId", "recordType", "emotions", "timestamp"]
+        "displayName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     },
-    "DailySummary": {
+    "Entry": {
+      "title": "Journal Entry",
+      "description": "Daily thoughts and reflections",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "content": { "type": "string" },
+        "mood": { "type": "string" },
+        "summary": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "type": { "type": "string", "enum": ["questionnaire", "diary", "chat"] },
+        "isNegative": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "content", "createdAt"]
+    },
+    "Summary": {
       "title": "Daily Summary",
-      "description": "AI-generated summary of the user's day.",
+      "description": "Aggregated summary of a user's day",
       "type": "object",
       "properties": {
-        "userId": {
-          "type": "string"
-        },
-        "dateId": {
-          "type": "string",
-          "description": "YYYY-MM-DD format"
-        },
-        "coreEmotion": {
-          "type": "string"
-        },
-        "keyEvents": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "doctorMessage": {
-          "type": "string"
-        },
-        "timestamp": {
-          "type": "number"
-        }
-      },
-      "required": ["userId", "dateId", "coreEmotion", "doctorMessage", "timestamp"]
-    },
-    "PeriodicReport": {
-      "title": "Periodic Report",
-      "description": "Weekly or monthly insight report.",
-      "type": "object",
-      "properties": {
-        "userId": {
-          "type": "string"
-        },
-        "periodType": {
-          "type": "string",
-          "enum": ["weekly", "monthly", "yearly"]
-        },
-        "startDate": {
-          "type": "string"
-        },
-        "endDate": {
-          "type": "string"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "suggestions": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "timestamp": {
-          "type": "number"
-        }
-      },
-      "required": ["userId", "periodType", "startDate", "endDate", "summary", "timestamp"]
+        "userId": { "type": "string" },
+        "date": { "type": "string" },
+        "moodTags": { "type": "array", "items": { "type": "string" } },
+        "keyEvents": { "type": "array", "items": { "type": "object", "properties": { "title": { "type": "string" }, "description": { "type": "string" } } } },
+        "doctorNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
     }
   },
   "firestore": {
-    "users/{userId}/records/{recordId}": {
-      "schema": { "$ref": "#/entities/EmotionRecord" },
-      "description": "Individual emotion records for a user."
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
     },
-    "users/{userId}/dailySummaries/{dailySummaryId}": {
-      "schema": { "$ref": "#/entities/DailySummary" },
-      "description": "Daily summaries for a user."
+    "/users/{userId}/entries/{entryId}": {
+      "schema": "Entry",
+      "description": "User journal entries and reflections"
     },
-    "users/{userId}/periodicReports/{reportId}": {
-      "schema": { "$ref": "#/entities/PeriodicReport" },
-      "description": "Periodic insight reports for a user."
+    "/users/{userId}/summaries/{summaryId}": {
+      "schema": "Summary",
+      "description": "User daily multi-record aggregations"
     }
   }
 }

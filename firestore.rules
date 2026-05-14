@@ -1,77 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    match /test/connection {
-      allow read: if true;
-    }
-
-    function isSignedIn() { return request.auth != null; }
-    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-
-    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-
-    // Validation for EmotionRecord
-    function isValidEmotionRecord(data, userId) {
-      return data.keys().hasAll(['userId', 'recordType', 'emotions', 'timestamp'])
-        && data.userId == userId
-        && data.recordType in ['questionnaire', 'diary', 'chat']
-        && (!data.keys().hasAny(['content']) || (data.content is string && data.content.size() <= 100000))
-        && data.emotions is list && data.emotions.size() <= 20
-        && (data.emotions.size() == 0 || data.emotions[0] is string)
-        && data.timestamp == request.time
-        && (!data.keys().hasAny(['isFlagged']) || data.isFlagged is bool);
-    }
-
-    match /users/{userId}/records/{recordId} {
-      allow read: if isOwner(userId) && isValidId(userId);
-      allow list: if isOwner(userId) && isValidId(userId);
-      allow create: if isOwner(userId) && isValidId(userId) && isValidId(recordId) && isValidEmotionRecord(incoming(), userId) && incoming().keys().size() <= 6;
-      allow update: if false; // Immutable
-      allow delete: if false;
-    }
-
-    function isValidDailySummary(data, userId) {
-      return data.keys().hasAll(['userId', 'dateId', 'coreEmotion', 'doctorMessage', 'timestamp'])
-        && data.userId == userId
-        && data.dateId is string && data.dateId.size() <= 20
-        && data.coreEmotion is string && data.coreEmotion.size() <= 100
-        && (!data.keys().hasAny(['keyEvents']) || (data.keyEvents is list && data.keyEvents.size() <= 50 && (data.keyEvents.size() == 0 || data.keyEvents[0] is string)))
-        && data.doctorMessage is string && data.doctorMessage.size() <= 10000
-        && data.timestamp == request.time;
-    }
-
-    match /users/{userId}/dailySummaries/{summaryId} {
-      allow read, list: if isOwner(userId) && isValidId(userId);
-      allow create: if isOwner(userId) && isValidId(userId) && isValidId(summaryId) && isValidDailySummary(incoming(), userId) && incoming().keys().size() <= 6;
-      allow update: if isOwner(userId) && isValidId(userId) && isValidId(summaryId) && isValidDailySummary(incoming(), userId) 
-                    && incoming().userId == existing().userId
-                    && incoming().timestamp == request.time
-                    && incoming().keys().size() <= 6;
-      allow delete: if false;
-    }
-
-    function isValidPeriodicReport(data, userId) {
-      return data.keys().hasAll(['userId', 'periodType', 'startDate', 'endDate', 'summary', 'timestamp'])
-        && data.userId == userId
-        && data.periodType in ['weekly', 'monthly', 'yearly']
-        && data.startDate is string && data.startDate.size() <= 20
-        && data.endDate is string && data.endDate.size() <= 20
-        && data.summary is string && data.summary.size() <= 20000
-        && (!data.keys().hasAny(['suggestions']) || (data.suggestions is list && data.suggestions.size() <= 20 && (data.suggestions.size() == 0 || data.suggestions[0] is string)))
-        && data.timestamp == request.time;
-    }
-
-    match /users/{userId}/periodicReports/{reportId} {
-      allow read, list: if isOwner(userId) && isValidId(userId);
-      allow create: if isOwner(userId) && isValidId(userId) && isValidId(reportId) && isValidPeriodicReport(incoming(), userId) && incoming().keys().size() <= 7;
-      allow update: if false;
-      allow delete: if false;
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
     }
   }
 }
+
+

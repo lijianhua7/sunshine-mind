@@ -1,220 +1,282 @@
 'use client';
 
 import { useState } from 'react';
-import { ai, MODELS } from '../lib/ai';
-import { Type } from '@google/genai';
-import { useAuth } from './AuthProvider';
-import { Card } from './ui/card';
-import { Button } from './ui/button';
-import { motion, AnimatePresence } from 'motion/react';
-import { cn } from '../lib/utils';
-import { Loader2, CheckCircle2, ArrowRight } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Smile, Frown, Meh, Send, CloudRain, Sun, Wind } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 
-const BASE_EMOTIONS = [
-  { id: 'joy', label: '喜悦 (Joy)', color: 'text-amber-500 bg-amber-500/10 border-amber-500/20' },
-  { id: 'sadness', label: '悲伤 (Sadness)', color: 'text-blue-500 bg-blue-500/10 border-blue-500/20' },
-  { id: 'anxiety', label: '焦虑 (Anxiety)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/20' },
-  { id: 'anger', label: '愤怒 (Anger)', color: 'text-red-500 bg-red-500/10 border-red-500/20' },
-  { id: 'peaceful', label: '平静 (Peaceful)', color: 'text-teal-500 bg-teal-500/10 border-teal-500/20' },
-  { id: 'overwhelmed', label: '心力交瘁 (Overwhelmed)', color: 'text-slate-500 bg-slate-500/10 border-slate-500/20' }
-];
+import { ai } from '@/lib/ai';
+import { saveJournalEntry } from '@/lib/entries';
+import { useAuth } from '@/components/AuthProvider';
 
-interface Question {
-  question: string;
-  options: string[];
-}
-
-export function QuestionnaireView() {
+export default function QuestionnaireView() {
   const { user } = useAuth();
-  const [selectedEmotion, setSelectedEmotion] = useState<string | null>(null);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [submitting, setSubmitting] = useState(false);
-  const [completed, setCompleted] = useState(false);
+  const [step, setStep] = useState(1);
+  const [mood, setMood] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
+  const [options, setOptions] = useState<string[]>([]);
+  const [history, setHistory] = useState<{ question: string, answer: string }[]>([]);
+  const [questionCount, setQuestionCount] = useState(0);
 
-  const fetchQuestions = async (emotion: string) => {
-    setSelectedEmotion(emotion);
-    setLoading(true);
+  const moods = [
+    { icon: Sun, label: '开心', value: '开心', color: 'text-[#D8A492] bg-[#F4C9B8]/20' },
+    { icon: CloudRain, label: '沮丧', value: '沮丧', color: 'text-[#809689] bg-[#E5ECE9]/50' },
+    { icon: Frown, label: '委屈', value: '委屈', color: 'text-[#A8A4CE] bg-[#A8A4CE]/10' },
+    { icon: Wind, label: '平静', value: '平静', color: 'text-[#97A991] bg-[#97A991]/10' },
+  ];
+
+  const handleMoodSelect = async (val: string) => {
+    setMood(val);
+    setStep(2);
+    setIsGenerating(true);
+    setQuestionCount(1);
+    setHistory([]);
+    toast.success('你的真实感受已被妥善珍藏。正在为你生成引导性问题...');
+    
     try {
       const response = await ai.models.generateContent({
-        model: MODELS.text,
-        contents: `You are a gentle psychological counselor. The user is feeling '${emotion}'. Generate 3 short, empathetic multiple-choice questions (with 3-4 options each) to help them understand this feeling better. Format the response strictly as a JSON list of objects, where each object has 'question' (string) and 'options' (array of strings). Please generate the questions and options in Chinese. Example: [{"question":"今天是什么触发了你的这种感觉？","options":["工作","关系","我自己","不知道"]}]`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                question: { type: Type.STRING },
-                options: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING }
-                }
-              },
-              required: ['question', 'options']
-            }
-          }
-        }
+        model: 'gemini-3-flash-preview',
+        contents: `用户此刻的情绪是“${val}”。请生成第1个具有引导性的问题，以及3-4个供用户点击选择的简短回答选项。
+        要求：
+        1. 语气温和、具备同理心。
+        2. 问题要简短，引导用户思考情绪原因。
+        3. 负面情绪（沮丧、委屈）下，问题要轻柔，不要给压力。
+        4. 输出格式必须是 JSON：{"question": "问题内容", "options": ["选项1", "选项2", "选项3"]}
+        5. 不要包含任何 Markdown 格式或额外文字。`,
       });
-      
-      const data = JSON.parse(response.text || '[]');
-      setQuestions(data);
-    } catch (error) {
-      console.error(error);
-      toast.error('生成问卷失败，请稍后再试。');
-      setSelectedEmotion(null);
+      const data = JSON.parse(response.text || '{}');
+      setCurrentQuestion(data.question);
+      setOptions(data.options);
+    } catch (e) {
+      console.error('AI error:', e);
+      setCurrentQuestion('你觉得自己现在最需要什么？');
+      setOptions(['一段安静的时间', '一个温暖的拥抱', '一个可以倾诉的人', '一次彻底的放松']);
     } finally {
-      setLoading(false);
+      setIsGenerating(false);
     }
   };
 
-  const handleSelectOption = (qIndex: number, option: string) => {
-    setAnswers(prev => ({ ...prev, [qIndex]: option }));
-  };
-
-  const handleSubmit = async () => {
-    if (!user) return;
-    if (Object.keys(answers).length < questions.length) {
-      toast.error('请回答所有问题以完成记录。');
+  const handleAnswerSelect = async (answer: string) => {
+    if (!currentQuestion) return;
+    
+    const newHistory = [...history, { question: currentQuestion, answer }];
+    setHistory(newHistory);
+    
+    if (questionCount >= 5) {
+      setStep(3);
+      generateFinalSummary(newHistory);
       return;
     }
-    
-    setSubmitting(true);
+
+    setIsGenerating(true);
+    setQuestionCount(prev => prev + 1);
+
     try {
-      const content = questions.map((q, i) => `Q: ${q.question}\nA: ${answers[i]}`).join('\n\n');
-      
-      // Determine if flagged (e.g., self-harm mentioned in options, though AI shouldn't generate those normally, 
-      // but we do a quick check just in case, or we analyze later)
-      
-      await addDoc(collection(db, `users/${user.uid}/records`), {
-        userId: user.uid,
-        recordType: 'questionnaire',
-        content: `Base Emotion: ${selectedEmotion}\n\n${content}`,
-        emotions: [selectedEmotion],
-        timestamp: serverTimestamp(),
-        isFlagged: false
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `用户情绪：${mood}。
+        之前对话记录：${JSON.stringify(newHistory)}。
+        请生成第 ${questionCount + 1} 个具有引导性的深入问题，以及3-4个供用户点击选择的简短回答选项。
+        要求：
+        1. 基于之前的回答进一步深入。
+        2. 语气持续温和，不评判。
+        3. 总问题数为5，这是第 ${questionCount + 1} 个。
+        4. 输出格式必须是 JSON：{"question": "问题内容", "options": ["选项1", "选项2", "选项3"]}
+        5. 不要包含任何 Markdown 格式。`,
       });
-      
-      setCompleted(true);
-      toast.success('记录成功保存！');
-    } catch (error) {
-      console.error(error);
-      toast.error('保存失败。');
+      const data = JSON.parse(response.text || '{}');
+      setCurrentQuestion(data.question);
+      setOptions(data.options);
+    } catch (e) {
+      setCurrentQuestion('你觉得这种感觉在告诉你什么？');
+      setOptions(['我需要休息', '我感到被忽视了', '我需要改变一些事情', '我只是需要被看见']);
     } finally {
-      setSubmitting(false);
+      setIsGenerating(false);
     }
   };
 
-  const reset = () => {
-    setSelectedEmotion(null);
-    setQuestions([]);
-    setAnswers({});
-    setCompleted(false);
+  const [finalSummary, setFinalSummary] = useState('');
+  const generateFinalSummary = async (h: { question: string, answer: string }[]) => {
+    setIsGenerating(true);
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `基于用户的情绪记录：
+        情绪：${mood}
+        详细对话：${JSON.stringify(h)}
+        请给出一份医生视角的肯定与安慰语。
+        要求：
+        1. 字数在100字左右。
+        2. 语气包含同理心、医生的稳重、以及对未来的正向引导。
+        3. 严禁说教。
+        4. 如果有极度负面情绪，请温和建议用户休息，并提供舒缓建议。
+        5. 对话中提到的核心事件请简要带过。`,
+      });
+      setFinalSummary(response.text || '');
+    } catch (e) {
+      setFinalSummary('接纳这种感觉，你的世界一直被温柔地托举着。所有的情绪都是你的一部分，它们值得被看见。');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
-  if (completed) {
-    return (
-      <Card className="flex flex-col items-center justify-center p-12 text-center rounded-3xl border-0 shadow-sm glass-panel">
-        <div className="rounded-full bg-green-50/50 p-4 mb-4 border border-green-200/50">
-          <CheckCircle2 className="w-12 h-12 text-[#4A5D4E]" />
-        </div>
-        <h3 className="text-xl font-medium text-[#2D3436] mb-2">感谢你的分享</h3>
-        <p className="text-[#636E72] mb-6">你的回答已经被温柔地收藏在日记中。</p>
-        <Button variant="outline" onClick={reset} className="rounded-full border-white/60 text-[#4A5D4E] bg-white/40 hover:bg-white/60">
-          再记一篇
-        </Button>
-      </Card>
-    );
-  }
+  const saveToDiary = async () => {
+    if (!user || !mood) return;
+    setIsSaving(true);
+    try {
+      const content = history.map(h => `问：${h.question}\n答：${h.answer}`).join('\n\n');
+      await saveJournalEntry({
+        userId: user.uid,
+        content: content,
+        mood: mood,
+        summary: finalSummary,
+        type: 'questionnaire',
+        isNegative: mood === '沮丧' || mood === '委屈'
+      });
+      toast.success('已存入你的情感日记。');
+      setStep(1);
+      setMood(null);
+      setHistory([]);
+      setQuestionCount(0);
+    } catch (e) {
+      toast.error('保存失败，请重试。');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
 
   return (
-    <Card className="p-8 rounded-3xl border-0 bg-transparent shadow-none">
-      <div className="glass-panel p-8">
-      <AnimatePresence mode="wait">
-        {!selectedEmotion ? (
-          <motion.div 
-            key="select"
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="space-y-6"
-          >
-            <div className="text-center">
-              <h3 className="text-lg text-[#2D3436]">你今天最主要的情绪是？</h3>
-              <p className="text-sm text-[#636E72] mt-1">选择一个感受，开始快速记录。</p>
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              {BASE_EMOTIONS.map(emo => (
-                <button
-                  key={emo.id}
-                  onClick={() => fetchQuestions(emo.label)}
-                  className={cn(
-                    "flex flex-col items-center justify-center p-6 rounded-2xl bg-white/40 border border-white/60 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:bg-white/60",
-                    emo.color.includes('text') ? emo.color.split(' ').find(c => c.startsWith('text-')) : ''
-                  )}
-                >
-                  <span className="font-medium">{emo.label.split(' ')[0]}</span>
-                </button>
-              ))}
-            </div>
-          </motion.div>
-        ) : loading ? (
-          <motion.div key="loading" className="flex flex-col items-center justify-center py-12" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <Loader2 className="w-8 h-8 animate-spin text-[#4A5D4E] mb-4" />
-            <p className="text-[#636E72]">正在为你生成一些温柔的探索问题...</p>
-          </motion.div>
-        ) : (
-          <motion.div key="questions" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
-            <div className="flex items-center justify-between border-b border-black/5 pb-4">
-              <h3 className="font-medium text-[#2D3436]">探索关于“{selectedEmotion.split(' ')[0]}”的感受</h3>
-              <Button variant="ghost" size="sm" onClick={reset} className="text-[#636E72]">重新选择</Button>
-            </div>
-            
-            <div className="space-y-8">
-              {questions.map((q, i) => (
-                <div key={i} className="space-y-3">
-                  <p className="text-[#2D3436] font-medium">{i + 1}. {q.question}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {q.options.map((opt, j) => {
-                      const isSelected = answers[i] === opt;
-                      return (
-                        <button
-                          key={j}
-                          onClick={() => handleSelectOption(i, opt)}
-                          className={cn(
-                            "px-4 py-2 rounded-xl text-sm border transition-colors text-left backdrop-blur-sm",
-                            isSelected 
-                              ? "bg-white/80 text-[#4A5D4E] border-[#A8B59B] shadow-sm" 
-                              : "bg-white/30 text-[#2D3436] border-transparent hover:bg-white/50"
-                          )}
+    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-12">
+      <header className="mb-12 text-center md:text-left">
+        <h1 className="font-serif text-4xl font-medium tracking-tight text-foreground mb-3">每日静心</h1>
+        <p className="text-muted-foreground text-lg italic">花一点时间，感受你内心的天气。</p>
+      </header>
+
+      <div className="grid gap-8">
+        <AnimatePresence mode="wait">
+          {step === 1 && (
+            <motion.div
+              key="step1"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Card className="border border-border/50 shadow-sm bg-card rounded-[2rem] overflow-hidden">
+                <CardHeader className="bg-muted/30 p-8 pb-6">
+                  <CardTitle className="font-serif text-2xl font-medium">此刻，你的心感觉如何？</CardTitle>
+                  <CardDescription className="text-base mt-2">选择最能反映你当下内心风景的状态。</CardDescription>
+                </CardHeader>
+                <CardContent className="p-8">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                    {moods.map((m) => (
+                      <button
+                        key={m.value}
+                        onClick={() => handleMoodSelect(m.value)}
+                        className={`p-8 rounded-[2rem] flex flex-col items-center gap-4 transition-all duration-300 border border-transparent ${
+                          mood === m.value 
+                            ? 'ring-2 ring-primary shadow-sm border-border' 
+                            : 'hover:bg-muted/50 hover:border-border/50 hover:-translate-y-1'
+                        } ${m.color}`}
+                      >
+                        <m.icon size={40} strokeWidth={1.5} />
+                        <span className="font-serif font-medium text-lg">{m.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {step === 2 && (
+            <motion.div
+              key="step2"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Card className="border border-border/50 shadow-sm bg-card rounded-[2rem] overflow-hidden">
+                <CardHeader className="p-8 pb-4">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm font-medium text-muted-foreground">引导探索 {questionCount} / 5</span>
+                  </div>
+                  <CardTitle className="font-serif text-2xl font-medium flex items-center gap-2">
+                    {isGenerating ? '正在深入倾听...' : currentQuestion}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-8 p-8 pt-0">
+                  {isGenerating ? (
+                    <div className="flex justify-center p-12">
+                      <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3">
+                      {options.map((opt, idx) => (
+                        <button 
+                          key={idx}
+                          onClick={() => handleAnswerSelect(opt)}
+                          className="p-4 text-left rounded-2xl border bg-muted/30 border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all text-foreground/80"
                         >
                           {opt}
                         </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="pt-4 flex justify-end">
-              <Button 
-                onClick={handleSubmit} 
-                disabled={submitting || Object.keys(answers).length < questions.length}
-                className="rounded-full bg-white/60 border border-white/60 hover:bg-white/80 text-[#4A5D4E] px-8 shadow-sm"
-              >
-                {submitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                保存日记 <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+
+          {step === 3 && (
+            <motion.div
+              key="step3"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Card className="border border-border/50 shadow-sm bg-card rounded-[2rem] overflow-hidden">
+                <CardHeader className="p-8 pb-4">
+                  <CardTitle className="font-serif text-2xl font-medium">心灵的回响</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-8 p-8 pt-0">
+                  {isGenerating ? (
+                    <div className="flex justify-center p-12">
+                      <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="p-8 bg-secondary/20 rounded-[2rem] border border-secondary/30 text-secondary-foreground leading-relaxed font-serif text-xl italic whitespace-pre-wrap">
+                        {finalSummary}
+                      </div>
+                      
+                      <div className="flex justify-end gap-4">
+                        <Button variant="ghost" onClick={() => { setStep(1); setMood(null); }} className="rounded-full px-6">重新记录</Button>
+                        <Button onClick={saveToDiary} disabled={isSaving} className="rounded-full px-8 bg-foreground text-background hover:bg-foreground/90 gap-2 font-medium">
+                          {isSaving ? (
+                            <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <Send size={16} />
+                          )}
+                          记入情感日记
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
-    </Card>
+    </div>
   );
 }
+

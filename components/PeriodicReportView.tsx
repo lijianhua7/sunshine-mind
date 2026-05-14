@@ -1,179 +1,174 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAuth } from './AuthProvider';
-import { Card } from './ui/card';
-import { Button } from './ui/button';
-import { Loader2, CalendarRange, TrendingUp, Sparkles } from 'lucide-react';
-import { db } from '../lib/firebase';
-import { collection, query, where, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { toast } from 'sonner';
-import { ai, MODELS } from '../lib/ai';
-import { Type } from '@google/genai';
-import { format, subDays } from 'date-fns';
+import { BarChart3, TrendingUp, Calendar, Info, Sparkles } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { useAuth } from '@/components/AuthProvider';
+import { getUserEntries } from '@/lib/entries';
+import { ai } from '@/lib/ai';
 
-interface PeriodicReport {
-  summary: string;
-  suggestions: string[];
-}
-
-export function PeriodicReportView() {
+export default function PeriodicReportView() {
   const { user } = useAuth();
-  const [report, setReport] = useState<PeriodicReport | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [recordCount, setRecordCount] = useState<number | null>(null);
+  const [entries, setEntries] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [report, setReport] = useState<any>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   useEffect(() => {
-    const checkRecords = async () => {
+    async function fetchData() {
       if (!user) return;
-      const q = query(collection(db, `users/${user.uid}/records`));
-      const snap = await getDocs(q);
-      setRecordCount(snap.size);
-    };
-    checkRecords();
+      setIsLoading(true);
+      try {
+        const data = await getUserEntries(user.uid, 50);
+        setEntries(data || []);
+      } catch (e: any) {
+        console.error(e);
+        // Fallback to empty if permissions fail
+        setEntries([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchData();
   }, [user]);
 
   const generateReport = async () => {
-    if (!user || recordCount === null) return;
-    setLoading(true);
+    if (entries.length < 3) return;
+    setIsGenerating(true);
     try {
-      const q = query(collection(db, `users/${user.uid}/dailySummaries`));
-      const snap = await getDocs(q);
-      
-      let contextStr = '';
-      let isInitial = false;
-      
-      if (snap.size < 3) {
-        // Less than 3 days of summaries: use raw records if needed
-        isInitial = true;
-        const recQ = query(collection(db, `users/${user.uid}/records`));
-        const recSnap = await getDocs(recQ);
-        contextStr = recSnap.docs.map(d => d.data().content).join('\n---\n');
-      } else {
-        contextStr = snap.docs.map(d => {
-          const dt = d.data();
-          return `Date: ${dt.dateId}\nEmotion: ${dt.coreEmotion}\nEvents: ${dt.keyEvents?.join(', ')}`;
-        }).join('\n\n');
-      }
-
-      if (!contextStr.trim()) {
-        toast.info("No records to analyze yet.");
-        setLoading(false);
-        return;
-      }
-
-      const promptStr = isInitial 
-        ? `You are an AI therapist. The user has only recorded a few times (less than a week). Generate an "Initial Impression Report". 
-           Identify their current state of mind and provide 2-3 gentle suggestions to keep journaling.
-           Be very encouraging and soft-spoken.`
-        : `You are an AI therapist analyzing a user's recent week of daily summaries. Generate a "Weekly Insight Report".
-           Analyze emotion trends, highlight how they handled challenges (especially if you see negative emotions that they overcame),
-           and provide 2-4 actionable, gentle wellness suggestions. Keep the tone warm and empowering.`;
-
+      const entriesText = entries.map(e => `[${e.type}] ${e.content} (Mood: ${e.mood})`).join('\n\n');
       const response = await ai.models.generateContent({
-        model: MODELS.text,
-        contents: `${promptStr}\n\nData:\n${contextStr}`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              summary: { type: Type.STRING },
-              suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ['summary', 'suggestions']
-          }
+        model: 'gemini-3-flash-preview',
+        contents: `这里是用户近期（最多50条）的心情记录。请生成一份周期性成长报告。
+        要求输出 JSON 格式：
+        {
+          "awarenessScore": 90, // 百分比
+          "trend": "平稳/上升/波动",
+          "trendDesc": "一两句话描述趋势",
+          "reflectionCount": 10, // 基于数据
+          "topEvents": [{"title": "事件名", "count": 5, "mood": "心情词"}], // 最多3个
+          "growthLetter": "AI月度成长信，医生视角，同理心，150字左右"
         }
+        
+        记录内容：
+        ${entriesText}`,
       });
-
-      const generated = JSON.parse(response.text || '{}');
       
-      await addDoc(collection(db, `users/${user.uid}/periodicReports`), {
-        userId: user.uid,
-        periodType: 'weekly',
-        startDate: format(subDays(new Date(), 7), 'yyyy-MM-dd'),
-        endDate: format(new Date(), 'yyyy-MM-dd'),
-        summary: generated.summary || '',
-        suggestions: generated.suggestions || [],
-        timestamp: serverTimestamp()
-      });
-
-      setReport(generated);
-      toast.success(isInitial ? 'Initial Impression generated.' : 'Weekly Insight generated.');
-    } catch (error) {
-      console.error(error);
-      toast.error('Failed to generate report.');
+      const cleanJson = (response.text || '{}').replace(/```json/i, '').replace(/```/g, '').trim();
+      setReport(JSON.parse(cleanJson));
+    } catch (e) {
+      console.error(e);
     } finally {
-      setLoading(false);
+      setIsGenerating(false);
     }
   };
 
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh]">
+        <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+        <p className="mt-4 text-muted-foreground font-serif italic">正在为你编织成长画卷...</p>
+      </div>
+    );
+  }
+
+  if (entries.length < 3) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+        <Info size={48} className="text-muted-foreground/30 mb-6" />
+        <h2 className="font-serif text-3xl font-medium mb-4">记录还不够多</h2>
+        <p className="text-muted-foreground max-w-sm mx-auto italic mb-8">
+          数据积累不足，建议再记录 {3 - entries.length} 天，以便我能为你提供更深度的周期性洞察。
+        </p>
+      </div>
+    );
+  }
+
+  const displayReport = report || {
+    awarenessScore: 85,
+    trend: '正在探索',
+    trendDesc: '你的记录正在帮助我们更好地理解你的情感轨迹。',
+    reflectionCount: entries.length,
+    topEvents: [],
+    growthLetter: '记录心情就像在沙漠中挖掘泉水。每一篇日记都是你对自己的一次诚实投射。继续保持这份觉察，你会发现内心深处从未察觉的力量。'
+  };
+
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div>
-        <h2 className="text-3xl font-light text-[#2D3436]">数据洞察</h2>
-        <p className="text-[#636E72] mt-2">更广阔地回望你的情绪旅程。</p>
+    <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-12">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+        <div>
+          <h1 className="font-serif text-4xl font-medium tracking-tight text-foreground mb-3">心灵洞察</h1>
+          <p className="text-muted-foreground text-lg italic">长期的情感轨迹与个人成长记录。</p>
+        </div>
+        {!report && (
+          <Button onClick={generateReport} disabled={isGenerating} className="rounded-full gap-2 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm">
+            {isGenerating ? '分析中...' : '生成最新分析'}
+          </Button>
+        )}
+      </header>
+
+      <div className="grid md:grid-cols-3 gap-6 text-center">
+        <Card className="border border-border/50 shadow-sm p-8 bg-card rounded-[2rem] hover:bg-accent/10 transition-colors">
+          <div className="font-serif text-5xl font-medium text-foreground mb-2 text-[#809689]">{displayReport.awarenessScore}%</div>
+          <div className="text-sm font-bold text-muted-foreground uppercase tracking-widest mt-4">自我觉察度</div>
+        </Card>
+        <Card className="border border-border/50 shadow-sm p-8 bg-card rounded-[2rem] hover:bg-accent/10 transition-colors">
+          <div className="font-serif text-4xl font-medium text-foreground mb-2 mt-2 text-[#D8A492]">{displayReport.trend}</div>
+          <div className="text-sm font-bold text-muted-foreground uppercase tracking-widest mt-5">情绪趋势</div>
+          <div className="text-xs text-[#D8A492]/80 mt-2 font-medium">{displayReport.trendDesc}</div>
+        </Card>
+        <Card className="border border-border/50 shadow-sm p-8 bg-card rounded-[2rem] hover:bg-accent/10 transition-colors">
+          <div className="font-serif text-5xl font-medium text-foreground mb-2 text-[#A8A4CE]">{displayReport.reflectionCount}</div>
+          <div className="text-sm font-bold text-muted-foreground uppercase tracking-widest mt-4">记录总数</div>
+          <div className="text-xs text-[#A8A4CE]/80 mt-2 font-medium">完成的心灵对话</div>
+        </Card>
       </div>
 
-      {!report && (
-        <Card className="glass-panel p-10 text-center flex flex-col items-center">
-          <div className="bg-[#A8B59B]/20 p-4 rounded-full mb-6">
-            <CalendarRange className="w-8 h-8 text-[#4A5D4E]" />
+      <div className="grid md:grid-cols-2 gap-6">
+        <Card className="border border-border/50 shadow-sm min-h-[300px] flex items-center justify-center bg-card rounded-[2rem] p-12 overflow-hidden relative">
+          <TrendingUp size={200} className="absolute -bottom-10 -left-10 text-primary/5 -rotate-12" strokeWidth={1} />
+          <div className="text-center max-w-sm relative z-10">
+            <BarChart3 size={64} className="mx-auto text-muted-foreground/30 mb-6" strokeWidth={1} />
+            <h3 className="font-serif text-2xl font-medium text-foreground mb-3">成长轨迹</h3>
+            <p className="text-muted-foreground text-base italic">每一个起伏都是生命的韵律。</p>
           </div>
-          <h3 className="text-xl text-[#2D3436] mb-2 font-medium">分析你的旅程</h3>
-          {recordCount !== null && recordCount < 5 ? (
-             <p className="text-[#636E72] mb-6 max-w-md">
-               你才刚刚开始记录（数据积累较少）。我们可以先生成一份 <strong className="text-[#4A5D4E]">初期印象报告</strong>。继续记录以获取更深入的周报洞察。
-             </p>
-          ) : (
-            <p className="text-[#636E72] mb-6 max-w-md">
-              生成一份近期情绪趋势和专属健康建议的综合报告。
-             </p>
-          )}
-          <Button 
-            onClick={generateReport} 
-            disabled={loading}
-            className="rounded-full bg-white/60 hover:bg-white/80 border border-white/60 text-[#4A5D4E] px-8 h-12 shadow-sm font-medium transition-all"
-          >
-            {loading ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Sparkles className="w-5 h-5 mr-2" />}
-            生成报告
-          </Button>
         </Card>
-      )}
 
-      {report && (
-        <div className="space-y-6">
-          <Card className="glass-panel p-8 relative overflow-hidden">
-             <div className="absolute top-0 right-0 p-6 opacity-5">
-               <TrendingUp className="w-32 h-32 text-[#4A5D4E]" />
-             </div>
-             <div className="relative z-10">
-               <h3 className="text-sm uppercase tracking-widest text-[#4A5D4E] font-bold mb-4 border-b border-black/5 pb-2">旅途总结</h3>
-               <p className="text-[#444] leading-relaxed text-lg font-light italic">{report.summary}</p>
-             </div>
-          </Card>
-          
-          <h3 className="text-sm uppercase tracking-widest text-[#4A5D4E] font-bold mt-8 mb-4 px-2">专属建议</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {report.suggestions.map((sug, i) => (
-              <Card key={i} className="glass-panel p-6 hover:bg-white/50 transition-colors">
-                <div className="flex items-start gap-4">
-                  <div className="bg-white/40 text-[#4A5D4E] w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm border border-white/50">
-                    {i + 1}
+        <Card className="border border-border/50 shadow-sm bg-card rounded-[2rem] p-8 md:p-10">
+          <h3 className="font-serif text-2xl font-medium text-foreground mb-6">高频事件回顾</h3>
+          <div className="space-y-6">
+            {displayReport.topEvents.length > 0 ? displayReport.topEvents.map((ev: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-10 h-10 rounded-full bg-secondary/30 flex items-center justify-center text-foreground font-medium text-lg">{idx + 1}</div>
+                  <div>
+                    <p className="font-medium text-foreground text-sm">{ev.title}</p>
+                    <p className="text-muted-foreground text-xs">出现 {ev.count} 次</p>
                   </div>
-                  <p className="text-[#2D3436] text-sm leading-relaxed mt-1">{sug}</p>
                 </div>
-              </Card>
-            ))}
+                <span className="text-primary text-sm font-medium px-3 py-1 bg-primary/10 rounded-full">{ev.mood}</span>
+              </div>
+            )) : (
+              <p className="text-muted-foreground italic text-center py-12">点击生成分析以查看高频事件</p>
+            )}
           </div>
-          
-          <div className="flex justify-center mt-8">
-            <Button variant="outline" onClick={() => setReport(null)} className="rounded-full glass-panel text-[#636E72] hover:bg-white/60 hover:text-[#2D3436]">
-              关闭报告
-            </Button>
+        </Card>
+      </div>
+
+      <Card className="border-none shadow-sm bg-secondary text-secondary-foreground p-8 md:p-12 rounded-[2rem]">
+        <div className="flex gap-6 items-start flex-col md:flex-row">
+          <div className="p-4 bg-background/20 rounded-full shrink-0">
+            <Sparkles size={24} className="text-foreground" />
+          </div>
+          <div>
+            <h3 className="font-serif text-2xl font-medium mb-4">AI 成长回信</h3>
+            <p className="leading-relaxed max-w-4xl font-serif text-xl italic whitespace-pre-wrap">
+              &quot;{displayReport.growthLetter}&quot;
+            </p>
           </div>
         </div>
-      )}
+      </Card>
     </div>
   );
 }
