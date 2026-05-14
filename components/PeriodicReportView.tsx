@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Calendar, Info, Sparkles } from 'lucide-react';
+import { ResponsiveContainer, LineChart, Line, XAxis, Tooltip, YAxis } from 'recharts';
+import { format } from 'date-fns';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/components/AuthProvider';
@@ -94,6 +96,19 @@ export default function PeriodicReportView() {
     growthLetter: '记录心情就像在沙漠中挖掘泉水。每一篇日记都是你对自己的一次诚实投射。继续保持这份觉察，你会发现内心深处从未察觉的力量。'
   };
 
+  const moodScoreMap: Record<string, number> = {
+    '开心': 4,
+    '平静': 3,
+    '委屈': 2,
+    '沮丧': 1
+  };
+
+  const chartData = [...entries].reverse().map(e => ({
+    date: e.createdAt && e.createdAt.seconds ? format(new Date(e.createdAt.seconds * 1000), 'MM/dd') : '',
+    score: moodScoreMap[e.mood] || 3,
+    mood: e.mood
+  }));
+
   return (
     <div className="p-4 md:p-8 max-w-6xl mx-auto space-y-12">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
@@ -126,13 +141,51 @@ export default function PeriodicReportView() {
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
-        <Card className="border border-border/50 shadow-sm min-h-[300px] flex items-center justify-center bg-card rounded-[2rem] p-12 overflow-hidden relative">
-          <TrendingUp size={200} className="absolute -bottom-10 -left-10 text-primary/5 -rotate-12" strokeWidth={1} />
-          <div className="text-center max-w-sm relative z-10">
-            <BarChart3 size={64} className="mx-auto text-muted-foreground/30 mb-6" strokeWidth={1} />
-            <h3 className="font-serif text-2xl font-medium text-foreground mb-3">成长轨迹</h3>
-            <p className="text-muted-foreground text-base italic">每一个起伏都是生命的韵律。</p>
-          </div>
+        <Card className="border border-border/50 shadow-sm min-h-[300px] flex items-center justify-center bg-card rounded-[2rem] p-8 md:p-12 overflow-hidden relative">
+          {chartData.length > 0 ? (
+            <div className="w-full h-full min-h-[250px] flex flex-col relative z-10">
+              <h3 className="font-serif text-2xl font-medium text-foreground mb-6 text-center">成长轨迹</h3>
+              <div className="flex-1 min-h-[200px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <XAxis dataKey="date" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis 
+                      domain={[1, 4]} 
+                      ticks={[1, 2, 3, 4]} 
+                      tickFormatter={(val) => val === 4 ? '开心' : val === 3 ? '平静' : val === 2 ? '委屈' : '沮丧'}
+                      stroke="#888888" 
+                      fontSize={12} 
+                      tickLine={false} 
+                      axisLine={false} 
+                    />
+                    <Tooltip 
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          return (
+                            <div className="bg-background border border-border/50 p-2 rounded-lg shadow-sm">
+                              <p className="text-xs text-muted-foreground">{payload[0].payload.date}</p>
+                              <p className="text-sm font-medium">{payload[0].payload.mood}</p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Line type="monotone" dataKey="score" stroke="#809689" strokeWidth={3} dot={{ r: 4, fill: '#809689' }} activeDot={{ r: 6 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          ) : (
+            <>
+              <TrendingUp size={200} className="absolute -bottom-10 -left-10 text-primary/5 -rotate-12" strokeWidth={1} />
+              <div className="text-center max-w-sm relative z-10">
+                <BarChart3 size={64} className="mx-auto text-muted-foreground/30 mb-6" strokeWidth={1} />
+                <h3 className="font-serif text-2xl font-medium text-foreground mb-3">成长轨迹</h3>
+                <p className="text-muted-foreground text-base italic">每一个起伏都是生命的韵律。</p>
+              </div>
+            </>
+          )}
         </Card>
 
         <Card className="border border-border/50 shadow-sm bg-card rounded-[2rem] p-8 md:p-10">

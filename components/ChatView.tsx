@@ -42,7 +42,7 @@ export default function ChatView() {
 
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, isTyping]);
 
@@ -55,21 +55,30 @@ export default function ChatView() {
     setIsTyping(true);
 
     try {
-      setMessages(prev => [...prev, { role: 'model', text: '' }]);
       const responseStream = await chatRef.current.sendMessageStream({ message: userMsg });
-      setIsTyping(false);
 
+      let isFirstChunk = true;
       for await (const chunk of responseStream) {
         if (chunk.text) {
-          setMessages(prev => {
-            const newMessages = [...prev];
-            const lastMsg = newMessages[newMessages.length - 1];
-            if (lastMsg.role === 'model') {
-              lastMsg.text += chunk.text;
-            }
-            return newMessages;
-          });
+          if (isFirstChunk) {
+            setIsTyping(false);
+            setMessages(prev => [...prev, { role: 'model', text: chunk.text }]);
+            isFirstChunk = false;
+          } else {
+            setMessages(prev => {
+              const newMessages = [...prev];
+              const lastMsg = newMessages[newMessages.length - 1];
+              if (lastMsg.role === 'model') {
+                lastMsg.text += chunk.text;
+              }
+              return newMessages;
+            });
+          }
         }
+      }
+      
+      if (isFirstChunk) {
+        setIsTyping(false);
       }
     } catch (error) {
       console.warn('Chat error:', error);
@@ -192,7 +201,7 @@ ${historyText}`,
             </Card>
           </div>
         )}
-        <ScrollArea className="flex-1 p-6 md:p-8" ref={scrollRef}>
+        <ScrollArea className="flex-1 p-6 md:p-8">
           <div className="space-y-8">
             {messages.map((m, i) => (
               <div key={i} className={`flex gap-4 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
@@ -206,7 +215,7 @@ ${historyText}`,
                     ? 'bg-muted/50 border border-border/50 text-foreground rounded-tl-none font-sans text-[15px]' 
                     : 'bg-foreground text-background rounded-tr-none shadow-sm'
                 }`}>
-                  <p className="leading-relaxed">{m.text}</p>
+                  <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
                 </div>
               </div>
             ))}
@@ -222,6 +231,7 @@ ${historyText}`,
                 </div>
               </div>
             )}
+            <div ref={scrollRef} className="h-4" />
           </div>
         </ScrollArea>
 
